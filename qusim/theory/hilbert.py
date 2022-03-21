@@ -6,14 +6,18 @@
 #
 # Copyright 2022 Zhiyuan Chen <chenzhiyuan@mail.ustc.edu.cn>
 
-from functools import cached_property
+from functools import cached_property, reduce
+from itertools import product
+from multiprocessing import Value
 from typing import Dict, List, Optional, Union
+
+from numpy import isin
 
 from qusim.theory.matrix import Matrix
 from qusim.theory.type import MatData
 
 
-class Hibert(object):
+class Hilbert(object):
     """
     Hilbert space opened by a set of named basis vectors.
 
@@ -41,35 +45,35 @@ class Hibert(object):
     --------
     Basic usage: 
 
-    >>> H = Hibert(["+", "-"])
+    >>> H = Hilbert(["+", "-"])
     >>> H
-    Hibert[|+>: [1, 0],
-           |->: [0, 1]]
-    >>> H = Hibert(2)
+    Hilbert[|+>: [1.+0.j 0.+0.j],
+            |->: [0.+0.j 1.+0.j]]
+    >>> H = Hilbert(2)
     >>> H
-    Hibert[|0>: [1, 0],
-           |1>: [0, 1]]
+    Hilbert[|0>: [1.+0.j 0.+0.j],
+            |1>: [0.+0.j 1.+0.j]]
 
     Direct product space:
 
-    >>> H = Hibert(["+", "-"], N=2)
+    >>> H = Hilbert(["+", "-"], N=2)
     >>> H
-    Hibert[|++>, |+->, |-+>, |-->]
-    Hibert[|++>: [1, 0, 0, 0],
-           |+->: [0, 1, 0, 0],
-           |-+>: [0, 0, 1, 0],
-           |-->: [0, 0, 0, 1]]
+    Hilbert[|++>: [1.+0.j 0.+0.j 0.+0.j 0.+0.j],
+            |+->: [0.+0.j 1.+0.j 0.+0.j 0.+0.j],
+            |-+>: [0.+0.j 0.+0.j 1.+0.j 0.+0.j],
+            |-->: [0.+0.j 0.+0.j 0.+0.j 1.+0.j]]
 
     Other orthogonal basis vector systems:
 
-    >>> H = Hibert(["alpha", "beta"], [[0.707, 0.707], [0.707, -0.707]])
+    >>> val = 1 / math.sqrt(2)
+    >>> H = Hilbert(["alpha", "beta"], [[val, val], [val, -val]])
     >>> H
-    Hibert[|alpha>: [0.707, 0.707],
-           |beta>: [0.707, -0.707]]
-    >>> H = Hibert(basis={"alpha": [0.707, 0.707], "beta": [0.707, -0.707]})
+    Hilbert[|alpha>: [0.70710678+0.j 0.70710678+0.j],
+            |beta>: [ 0.70710678+0.j -0.70710678+0.j]]
+    >>> H = Hilbert(basis={"alpha": [val, val], "beta": [val, -val]})
     >>> H
-    Hibert[|alpha>: [0.707, 0.707],
-           |beta>: [0.707, -0.707]]
+    Hilbert[|alpha>: [0.70710678+0.j 0.70710678+0.j],
+            |beta>: [ 0.70710678+0.j -0.70710678+0.j]]
 
     """
 
@@ -83,42 +87,98 @@ class Hibert(object):
         basis: Optional[Dict[str, List[complex]]] = None,
         N: int = 1,
     ) -> None:
-        raise NotImplementedError
+        if names is not None:
+
+            if isinstance(names, int):
+                names = [str(i) for i in range(names)]
+            if directions is None:
+                directions = Matrix.eye(len(names))
+            self.__names = names
+            self.__directions = Matrix(directions)
+
+        elif basis is not None:
+            self.__names = list(basis.keys())
+            self.__directions = Matrix(list(basis.values()))
+
+        else:
+            raise ValueError(
+                "need to pass in arguments `names` or argument `basis`")
+
+        if len(self.__names) != self.__directions.shape[0]:
+            raise ValueError("dimension mismatch")
+
+        if (self.__directions.H @ self.__directions) != Matrix.eye(self.dim):
+            raise ValueError(
+                "the basis vectors have no orthogonally normalized")
+
+        if N > 1:
+            self.__names = [
+                "".join(name) for name in product(self.__names, repeat=N)
+            ]
+            self.__directions = reduce(lambda x, y: x.kron(y),
+                                       [self.__directions] * N)
 
     # ----------------------------------------------------------------------
     # Formatting
 
     def __str__(self) -> str:
-        raise NotImplementedError
+        basis = f",\n ".join(
+            [f"|{k}>: {v}" for k, v in zip(self.names, self.directions)])
+        return f"[{basis}]"
 
     def __repr__(self) -> str:
-        raise NotImplementedError
+        name = self.__class__.__name__
+        basis = f",\n{' ' * (len(name) + 1)}".join(
+            [f"|{k}>: {v}" for k, v in zip(self.names, self.directions)])
+        return f"{name}[{basis}]"
+
+    # ----------------------------------------------------------------------
+    # Comparison
+
+    def __eq__(self, other: "Hilbert") -> bool:
+        """
+        Notes
+        -----
+        Compare only `directions`, not `names`.
+
+        """
+        return self.directions == other.directions
+
+    def __ne__(self, other: "Hilbert") -> bool:
+        return not self.__eq__(other)
 
     # ----------------------------------------------------------------------
     # Multiplication Operations
 
-    def __mul__(self, other: Union["Hibert", int]) -> "Hibert":
+    def __mul__(self, other: Union["Hilbert", int]) -> "Hilbert":
         """
         Direct product of Hilbert space.
 
         Parameters
         ----------
-        other : Hibert or int
-            Direct product with `other` if `other` is a Hibert space, 
+        other : Hilbert or int
+            Direct product with `other` if `other` is a Hilbert space, 
             else generate `dim` oplus `other` direct product space.
 
         Returns
         -------
-        space : Hibert
-            A new Hibert space.
+        space : Hilbert
+            A new Hilbert space.
 
         """
-        raise NotImplementedError
+        if isinstance(other, int):
+            return self.kron([self] * other)
+        else:
+            return self.kron([self, other])
 
     @classmethod
-    def kron(cls, spaces: List["Hibert"]) -> "Hibert":
+    def kron(cls, spaces: List["Hilbert"]) -> "Hilbert":
         """Direct product of Hilbert space."""
-        raise NotImplementedError
+        names = reduce(lambda x, y: ["".join(name) for name in product(x, y)],
+                       [H.names for H in spaces])
+        directions = reduce(lambda x, y: x.kron(y),
+                            [H.directions for H in spaces])
+        return Hilbert(names=names, directions=directions)
 
     # ----------------------------------------------------------------------
     # Basic Properties
@@ -126,34 +186,54 @@ class Hibert(object):
     @cached_property
     def dim(self) -> int:
         """Dimension of Hilbert space."""
-        raise NotImplementedError
+        return len(self.__names)
 
     @property
     def names(self) -> List[str]:
         """Get the name of basis vector."""
-        raise NotImplementedError
+        return self.__names
 
     @names.setter
-    def names(self, basis_vector: List[str]) -> None:
+    def names(self, basis_vector: Union[List[str], int]) -> None:
         """Set the name of basis vector."""
-        raise NotImplementedError
+        if isinstance(basis_vector, int):
+            basis_vector = [str(i) for i in range(basis_vector)]
+
+        if len(basis_vector) != self.dim:
+            raise ValueError("dimension mismatch")
+
+        self.__names = basis_vector
 
     @property
     def directions(self) -> Matrix:
         """Get the direction of basis vector."""
-        raise NotImplementedError
+        return self.__directions
 
     @directions.setter
     def directions(self, basis_vector: Matrix) -> None:
         """Set the direction of basis vector."""
-        raise NotImplementedError
+        if self.__directions.shape != basis_vector.shape:
+            raise ValueError("dimension mismatch")
+        if (basis_vector.H @ basis_vector) != Matrix.eye(self.dim):
+            raise ValueError(
+                "the basis vectors have no orthogonally normalized")
+
+        self.__directions = basis_vector
 
     @property
     def basis(self) -> Dict[str, List[complex]]:
         """Get the basis vector."""
-        raise NotImplementedError
+        return {k: Matrix(v) for k, v in zip(self.names, self.directions)}
 
     @basis.setter
     def basis(self, basis_vector: Dict[str, List[complex]]) -> None:
         """Set the basis vector."""
-        raise NotImplementedError
+        names = list(basis_vector.keys())
+        directions = Matrix(list(basis_vector.values()))
+
+        if (directions.H @ directions) != Matrix.eye(self.dim):
+            raise ValueError(
+                "the basis vectors have no orthogonally normalized")
+
+        self.__names = names
+        self.__directions = directions

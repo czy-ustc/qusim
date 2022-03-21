@@ -10,17 +10,19 @@ from typing import Dict, List, NewType, Sequence, Tuple, Union
 
 import numpy as np
 
+Number = Union[int, float, complex]
+
 # One or two dimensional complex matrix.
-ListData = Union[List[complex], List[List[complex]]]
+ListData = Union[List[Number], List[List[Number]]]
 
 # A dict of nonzero elements of matrix.
-DictData = Dict[Tuple[int, int], complex]
+DictData = Dict[Tuple[int, int], Number]
 
 # A array-like object of nonzero elements of matrix.
-SeqData = Sequence[Tuple[Tuple[int, int]], complex]
+SeqData = Sequence[Tuple[Tuple[int, int], Number]]
 
 # Basic matrix type.
-Matrix = NewType("Matrix", np.ndarray)
+Matrix = Union[NewType("Matrix", np.ndarray), np.ndarray]
 
 # Type of parameters that make up the matrix.
 MatData = Union[ListData, DictData, SeqData, Matrix]
@@ -32,4 +34,4 @@ Shape = Tuple[int, int]
 Index = Tuple[int, int]
 
 # Matrix element.
-Element = Tuple[Index, complex]
+Element = Tuple[Index, Number]
