@@ -10,6 +10,8 @@ from typing import Dict, List, NewType, Sequence, Tuple, Union
 
 import numpy as np
 
+__eps__ = 1e-12
+
 Number = Union[int, float, complex]
 
 # One or two dimensional complex matrix.

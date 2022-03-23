@@ -55,6 +55,8 @@ class TestHilbert:
 
         assert H1.names == ["+", "-"]
         assert H1.directions == Matrix.eye(2)
+        print(repr(H1.basis["+"]))
+        print(repr(Matrix([1, 0])))
         assert H1.basis["+"] == Matrix([1, 0])
 
         with pytest.raises(ValueError):

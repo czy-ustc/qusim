@@ -8,10 +8,7 @@
 
 from functools import cached_property, reduce
 from itertools import product
-from multiprocessing import Value
 from typing import Dict, List, Optional, Union
-
-from numpy import isin
 
 from qusim.theory.matrix import Matrix
 from qusim.theory.type import MatData

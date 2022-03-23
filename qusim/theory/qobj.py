@@ -10,9 +10,9 @@
 from functools import cached_property
 from typing import Optional
 
-from qusim.theory.hilbert import Hibert
+from qusim.theory.hilbert import Hilbert
 from qusim.theory.matrix import Matrix
-from qusim.theory.type import MatData
+from qusim.theory.type import MatData, Shape
 
 
 class Qobj(Matrix):
@@ -27,34 +27,57 @@ class Qobj(Matrix):
     data : MatData
         Data of state (type must be complex).
         If `data` is dict or sequence of tuple, 
-        `data` represents the nonzero element of the state. 
-        In this case, the `dim` parameter must be provided.
-        If `data` is Matrix, the data of state is `data.data`.
-    dim : int, optional
-        Dimension of Hilbert space.
+        `data` represents the nonzero element of the matrix. 
+        In this case, the `shape` parameter must be provided 
+        a sparse matrix whose shape is specified by `shape`.
+        If `data` is Matrix, the data of matrix is `data.data`.
+    shape : Shape, optional
+        If provided, the shape of the matrix will be specified by `shape`.
+        The `shape` must be like (1, n), (n, 1) or (n, n).
+    H : Hilbert, optional
+        Hilbert space.
 
     """
+
+    __type__ = "Qobj"
 
     # ----------------------------------------------------------------------
     # Constructors
 
-    def __init__(self, data: MatData, dim: Optional[int] = None) -> None:
-        raise NotImplementedError
+    def __init__(self,
+                 data: MatData,
+                 shape: Optional[Shape] = None,
+                 H: Optional[Hilbert] = None) -> None:
+        super().__init__(data, shape)
+
+        self.space = H or Hilbert(self.dim)
 
     # ----------------------------------------------------------------------
     # Basic properties
 
     @property
-    def space(self) -> Hibert:
+    def space(self) -> Hilbert:
         """Get the Hilbert space of the object."""
-        raise NotImplementedError
+        return self.__space
 
     @space.setter
-    def space(self, H: Hibert) -> None:
+    def space(self, H: Hilbert) -> None:
         """Set the Hilbert space of the object."""
-        raise NotImplementedError
+        if H.dim != self.dim:
+            raise ValueError("dimension mismatch")
+        self.__space = H
+
+        if self.shape[0] == self.dim:
+            self.array = H.directions.array @ self.array
+        else:
+            self.array = self.array @ H.directions.array
+
+    @cached_property
+    def dim(self) -> int:
+        """Dimension of Hilbert space."""
+        return max(self.shape)
 
     @cached_property
     def type(self) -> str:
         """Type of object, such as `State` or `Operator`."""
-        raise NotImplementedError
+        return self.__type__
