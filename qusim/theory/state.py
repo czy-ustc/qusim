@@ -84,14 +84,15 @@ class State(Qobj):
         states = self.space.names
         # bra
         if (self.shape[0] == 1):
-            amplitudes = (self.array @ self.space.directions.array).flatten()
+            amplitudes = (
+                self.array @ self.space.directions.array.conj()).flatten()
             string = "".join([
                 f"{format_complex(amplitudes[i])}<{states[i]}|"
                 for i in range(self.dim) if abs(amplitudes[i]) > __eps__
             ])
         # ket
         else:
-            amplitudes = (self.space.directions.array @ self.array).flatten()
+            amplitudes = (self.space.directions.array.T @ self.array).flatten()
             string = "".join([
                 f"{format_complex(amplitudes[i])}|{states[i]}>"
                 for i in range(self.dim) if abs(amplitudes[i]) > __eps__

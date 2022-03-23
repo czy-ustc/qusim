@@ -68,9 +68,9 @@ class Qobj(Matrix):
         self.__space = H
 
         if self.shape[0] == self.dim:
-            self.array = H.directions.array @ self.array
+            self.array = H.directions.array.T @ self.array
         else:
-            self.array = self.array @ H.directions.array
+            self.array = self.array @ H.directions.array.conj()
 
     @cached_property
     def dim(self) -> int:

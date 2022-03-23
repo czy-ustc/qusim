@@ -21,6 +21,10 @@ class Hilbert(object):
     The basis vectors are composed of numbers by default, 
     such as |0>, ..., |n>, and their direct product state are like |00>, |01>.
 
+    Notes
+    -----
+    The directions of the basis vectors are subject to ket.
+
     Parameters
     ----------
     names : list of str or int, optional
