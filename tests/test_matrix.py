@@ -78,7 +78,7 @@ class TestMatrix:
     def test_conj(self):
         mat1 = Matrix([1 + 1j, 2 + 2j])
         mat2 = Matrix([1 - 1j, 2 - 2j])
-        assert mat1.conj == mat2
+        assert mat1.conj() == mat2
 
     def test_H(self):
         mat1 = Matrix([1j, 2j])
@@ -102,7 +102,7 @@ class TestMatrix:
     def test_nonzero(self):
         mat1 = Matrix({(0, 0): 1, (2, 2): 1}, shape=(3, 3))
         mat2 = Matrix([((0, 0), 1), ((2, 2), 1)], shape=(3, 3))
-        mat3 = Matrix(mat1.nonzero(), shape=(3, 3))
+        mat3 = Matrix(mat1.nonzero, shape=(3, 3))
 
         assert mat2 == mat3
 
