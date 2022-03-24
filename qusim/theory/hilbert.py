@@ -8,7 +8,7 @@
 
 from functools import cached_property, reduce
 from itertools import product
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 from qusim.theory.matrix import Matrix
 from qusim.theory.type import MatData
@@ -41,6 +41,8 @@ class Hilbert(object):
     N : int, default 1
         Generate `dim` oplus `N` direct product space 
         as the new Hilbert space if N > 1.
+    subspace : list, optional
+        Subspaces that make up Hilbert direct product spaces.
 
     Examples
     --------
@@ -82,12 +84,12 @@ class Hilbert(object):
     # Constructors
 
     def __init__(
-        self,
-        names: Optional[Union[List[str], int]] = None,
-        directions: Optional[MatData] = None,
-        basis: Optional[Dict[str, List[complex]]] = None,
-        N: int = 1,
-    ) -> None:
+            self,
+            names: Optional[Union[List[str], int]] = None,
+            directions: Optional[MatData] = None,
+            basis: Optional[Dict[str, List[complex]]] = None,
+            N: int = 1,
+            subspace: Optional[List[Tuple[List[str], Matrix]]] = None) -> None:
         if names is not None:
 
             if isinstance(names, int):
@@ -118,6 +120,11 @@ class Hilbert(object):
             ]
             self.__directions = reduce(lambda x, y: x.kron(y),
                                        [self.__directions] * N)
+
+        if subspace is None:
+            self.__subspace = [(self.names, self.directions)]
+        else:
+            self.__subspace = subspace
 
     # ----------------------------------------------------------------------
     # Formatting
@@ -179,7 +186,8 @@ class Hilbert(object):
                        [H.names for H in spaces])
         directions = reduce(lambda x, y: x.kron(y),
                             [H.directions for H in spaces])
-        return Hilbert(names=names, directions=directions)
+        subspace = reduce(lambda x, y: x + y, [H.subspace for H in spaces])
+        return Hilbert(names=names, directions=directions, subspace=subspace)
 
     # ----------------------------------------------------------------------
     # Basic Properties
@@ -238,3 +246,7 @@ class Hilbert(object):
 
         self.__names = names
         self.__directions = directions
+
+    @property
+    def subspace(self) -> List[Tuple[List[str], Matrix]]:
+        return self.__subspace

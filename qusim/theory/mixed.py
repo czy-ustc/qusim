@@ -7,13 +7,19 @@
 #
 # Copyright 2022 Zhiyuan Chen <chenzhiyuan@mail.ustc.edu.cn>
 
-from typing import List, Optional, Tuple, Union
+import math
+from functools import cached_property, reduce
+from itertools import product
+from typing import Any, List, Optional, Tuple, Union
 
-from qusim.theory.hilbert import Hibert
-from qusim.theory.operator import MechanicalOperator
+import numpy as np
+from qusim.theory.hilbert import Hilbert
+from qusim.theory.matrix import Matrix
+from qusim.theory.operator import Operator
 from qusim.theory.qobj import Qobj
 from qusim.theory.state import Bra, Ket, State
 from qusim.theory.type import MatData
+from scipy.linalg import logm
 
 
 class DensityMatrix(Qobj):
@@ -22,10 +28,16 @@ class DensityMatrix(Qobj):
 
     Parameters
     ----------
-    states : State of tuple
+    states : State or tuple
         State vectors.
         If the parameter is tuple, 
         the second number in the tuple represents the probability.
+    data : MatData, optional
+        Data of density matrix.
+    dim : int, optional
+        Dimension of density matrix.
+    H : Hilbert, optional
+        Hilbert space.
 
     """
     __type__ = "Density Matrix"
@@ -33,22 +45,77 @@ class DensityMatrix(Qobj):
     # ----------------------------------------------------------------------
     # Constructors
 
-    def __init__(self, *states: Union[State, Tuple[State, float]]) -> None:
-        raise NotImplementedError
+    def __new__(cls, *args, **kwargs) -> Any:
+        if "data" in kwargs:
+            if "dim" in kwargs:
+                shape = (kwargs["dim"], kwargs["dim"])
+            else:
+                shape = None
+            return super().__new__(cls,
+                                   data=kwargs.pop("data"),
+                                   shape=shape,
+                                   *args,
+                                   **kwargs)
+        else:
+            if isinstance(args[0], tuple):
+                dim = args[0][0].dim
+            else:
+                dim = args[0].dim
+            return super().__new__(cls, Matrix.eye(dim), *args, **kwargs)
+
+    def __init__(self,
+                 *states: Union[State, Tuple[State, float]],
+                 data: Optional[MatData] = None,
+                 dim: Optional[int] = None,
+                 H: Optional[Hilbert] = None) -> None:
+        if data is None:
+            probability_sum = sum(state[1] if isinstance(state, tuple) else 1
+                                  for state in states)
+            array = [
+                (s[0].ket.array @ s[0].bra.array) *
+                s[1] if isinstance(s, tuple) else s.ket.array @ s.bra.array
+                for s in states
+            ]
+            data = np.sum(array, axis=0) / probability_sum
+            super().__init__(data, H=H)
+        else:
+            if dim is None:
+                super().__init__(data, H=H)
+            else:
+                super().__init__(data, shape=(dim, dim), H=H)
 
     # ----------------------------------------------------------------------
     # Formatting
 
     def __str__(self) -> str:
-        raise NotImplementedError
+        with np.printoptions(precision=2):
+            basis = self.space.directions
+            data = basis.array.conj() @ self.array @ basis.array.T
+            return np.round(data, 2).__str__()
 
     def __repr__(self) -> str:
-        raise NotImplementedError
+        string = self.__str__()
+        return f"<[{self.type}]>\n{string}"
+
+    # ----------------------------------------------------------------------
+    # Basic Operations In Linear Space
+
+    def __add__(self, other: Qobj) -> Qobj:
+        return NotImplemented
+
+    def __sub__(self, other: Qobj) -> Qobj:
+        return NotImplemented
+
+    def __mul__(self, other: complex) -> Qobj:
+        return NotImplemented
+
+    def __rmul__(self, other: complex) -> Qobj:
+        return NotImplemented
 
     # ----------------------------------------------------------------------
     # Multiplication Operations
 
-    def inner(self, other: "DensityMatrix") -> float:
+    def overlap(self, other: "DensityMatrix") -> float:
         """
         Calculate the overlap degree of two density matrices,
         defined by `trace(psi*phi)`.
@@ -64,12 +131,12 @@ class DensityMatrix(Qobj):
             Overlap degree.
 
         """
-        raise NotImplementedError
+        return (self.array @ other.array).trace()
 
     # ----------------------------------------------------------------------
     # Matrix Transformation
 
-    @property
+    @cached_property
     def ket(self) -> Ket:
         """
         Get the state vector as a ket.
@@ -80,9 +147,11 @@ class DensityMatrix(Qobj):
         and cannot be normalized.
 
         """
-        raise NotImplementedError
+        a0 = math.sqrt(self[(0, 0)].real)
+        data = [complex(i / a0).conjugate() for i in self[0]]
+        return Ket(data, H=self.space, unit=False)
 
-    @property
+    @cached_property
     def bra(self) -> Bra:
         """
         Get the state vector as a bra.
@@ -93,97 +162,53 @@ class DensityMatrix(Qobj):
         and cannot be normalized.
 
         """
-        raise NotImplementedError
+        a0 = math.sqrt(self[(0, 0)].real)
+        data = [i / a0 for i in self[0]]
+        return Bra(data, H=self.space, unit=False)
 
     # ----------------------------------------------------------------------
     # Metric
 
-    @property
+    @cached_property
     def trace(self) -> complex:
         """Trace of matrix."""
-        raise NotImplementedError
+        return self.array.trace()
 
-    @property
+    @cached_property
     def det(self) -> float:
         """Determinant of matrix."""
-        raise NotImplementedError
+        return np.linalg.det(self.array)
 
-    @property
+    @cached_property
     def purity(self) -> float:
         """Purity of mixed state, defined by trace(rho^2)."""
-        raise NotImplementedError
-
-    @property
-    def entropy(self) -> float:
-        """Etropy of mixed state, defined by -trace(rho*log(rho))."""
-        raise NotImplementedError
+        return abs(np.trace(self.array @ self.array))
 
     # ----------------------------------------------------------------------
-    # Measure
+    # Kronecker Product And Partial Trace
 
-    def measure(self, basis: Optional[MatData] = None) -> "DensityMatrix":
+    @classmethod
+    def kron(cls, dms: List["DensityMatrix"]) -> "DensityMatrix":
+        """Direct product."""
+        H = Hilbert.kron([dm.space for dm in dms])
+        data = reduce(lambda x, y: np.kron(x, y), [dm.array for dm in dms])
+        return DensityMatrix(data=data, H=H)
+
+    def ptrace(self, sel: Union[List[int], int]) -> "DensityMatrix":
         """
-        The density matrix is measured 
-        and randomly collapses to an eigenstate 
-        according to a certain probability.
-
-        Parameters
-        ----------
-        basis : MatData, optional
-            A matrix composed of all eigenvalues, 
-            default by the basis of Hibert space.
-
-        Returns
-        -------
-        result : DensityMatrix
-            The density matrix obtained from collapse.
-
-        """
-        raise NotImplementedError
-
-    def expect(self, observation: MechanicalOperator) -> float:
-        """
-        Average value of mechanical quantity ensemble, 
-        that is `trace(rho*A)`.
-
-        Parameters
-        ----------
-        observation : MechanicalOperator
-            Any mechanical operator of the system.
-
-        Returns
-        -------
-        result : float
-            Expected value of mechanical quantity.
-
-        """
-        raise NotImplementedError
-
-    def reduce(self,
-               base_space: Hibert,
-               *,
-               keep: Optional[List[int]] = None,
-               remove: Optional[List[int]] = None) -> "DensityMatrix":
-        """
-        Return reduced density matrix.
+        Partial trace of the quantum object.
 
         If you are only interested in a part of a large system (its subsystem),
         you can trace the rest to obtain the 
         reduced density matrix of the subsystem.
 
-        Notes
-        -----
-        Parameters `keep` and `remove` have and can only have one.
-
         Parameters
         ----------
-        base_space : Hibert
-            The basic Hilbert space 
-            that constitutes a large direct product space.
-        keep : list of int, optional
-            The indexes of subsystems that want to keep.
-        remove : list of int, optional
-            The indexes of subsystems that want to remove.
+        sel : list of int or int
+            An int or list of components to keep after partial trace. 
+            The order is unimportant; 
+            no transposition will be done 
+            and the spaces will remain in the same order in the output.
 
         Returns
         -------
@@ -191,7 +216,32 @@ class DensityMatrix(Qobj):
             Reduced density matrix.
 
         """
-        raise NotImplementedError
+
+        if isinstance(sel, int):
+            sel = {sel}
+        else:
+            sel = set(sel)
+
+        subspace = self.space.subspace
+        count = len(subspace)
+        removes = list(set(range(count)) - sel)
+        removes.sort()
+
+        dim = self.dim // reduce(lambda x, y: x * y,
+                                 (subspace[i][1].shape[0] for i in removes))
+
+        density = np.zeros((dim, dim), dtype=complex)
+        for arrays in product(*[
+                subspace[i][1] if i in
+                removes else [np.eye(subspace[i][1].shape[0])]
+                for i in range(count)
+        ]):
+            left = reduce(lambda x, y: np.kron(x, y), arrays)
+            right = left.T.conj()
+            density += left @ self.array @ right
+
+        space = Hilbert.kron([Hilbert(*subspace[i]) for i in list(sel)])
+        return DensityMatrix(data=density, H=space)
 
 
 class SuperOperator(Qobj):
@@ -205,12 +255,14 @@ class SuperOperator(Qobj):
 
     Parameters
     ----------
-    Kraus : MatData of tuple
+    Kraus : MatData or tuple
         Datas of Kraus operators. 
         If the parameter is tuple, 
         the second number in the tuple represents the probability.
     dim : int, optional
         Dimension of Hilbert space.
+    H : Hilbert, optional
+        Hilbert space.
 
     Examples
     --------
@@ -223,10 +275,10 @@ class SuperOperator(Qobj):
     >>> K
     SuperOperator
     -------------
-    K0: [[1, 0],
-         [0, 0.97]]
-    K1: [[0, 0.22],
-         [0, 0]]
+    K0: [[1.  +0.j 0.  +0.j]
+        [0.  +0.j 0.97+0.j]]
+    K1: [[0.  +0.j 0.22+0.j]
+        [0.  +0.j 0.  +0.j]]
 
     Depolarization:
 
@@ -238,14 +290,14 @@ class SuperOperator(Qobj):
     >>> K
     SuperOperator
     -------------
-    K0: [[0, 0.13],
-         [0.13, 0]]
-    K1: [[0, 0.22],
-         [0, 0]]
-    K2: [[0, -0.13j],
-         [0.13j, 0]]
-    K3: [[0.13, 0],
-         [0, -0.13]]
+    K0: [[0.97+0.j 0.  +0.j]
+        [0.  +0.j 0.97+0.j]]
+    K1: [[0.  +0.j 0.13+0.j]
+        [0.13+0.j 0.  +0.j]]
+    K2: [[0.+0.j   0.-0.13j]
+        [0.+0.13j 0.+0.j  ]]
+    K3: [[ 0.13+0.j  0.  +0.j]
+        [ 0.  +0.j -0.13+0.j]]
 
     -------------
 
@@ -256,61 +308,75 @@ class SuperOperator(Qobj):
     # ----------------------------------------------------------------------
     # Constructors
 
-    def __init__(self, *Kraus: Union[MatData, Tuple[MatData, float]],
-                 dim: Optional[int]) -> None:
-        raise NotImplementedError
+    def __new__(cls, *args, **kwargs) -> Any:
+        if isinstance(args[0], tuple):
+            dim = Operator(args[0][0], dim=kwargs.get("dim", None)).dim
+        else:
+            dim = Operator(args[0], dim=kwargs.get("dim", None)).dim
+        return super().__new__(cls, Matrix.eye(dim), *args, **kwargs)
+
+    def __init__(self,
+                 *Kraus: Union[MatData, Tuple[MatData, float]],
+                 dim: Optional[int] = None,
+                 H: Optional[Hilbert] = None) -> None:
+
+        if isinstance(Kraus[0], tuple):
+            pro_sum = sum(k[1] for k in Kraus)
+            self.__operators = [
+                Operator(Matrix(k[0]).array * math.sqrt(k[1] / pro_sum),
+                         dim=dim,
+                         H=H) for k in Kraus
+            ]
+        else:
+            self.__operators = [
+                Operator(Matrix(k), dim=dim, H=H) for k in Kraus
+            ]
 
     # ----------------------------------------------------------------------
     # Formatting
 
     def __str__(self) -> str:
-        raise NotImplementedError
+        name = self.__class__.__name__
+        separator = "-" * len(name)
+        count = len(self.operators)
+        with np.printoptions(precision=2):
+            return "\n".join([separator] + [
+                f"K{i}: " +
+                str(self.operators[i].array).replace("\n", "\n    ")
+                for i in range(count)
+            ])
 
     def __repr__(self) -> str:
-        raise NotImplementedError
+        name = self.__class__.__name__
+        return f"{name}\n{self.__str__()}"
 
     # ----------------------------------------------------------------------
     # Comparison
 
     def __eq__(self, other: "SuperOperator") -> bool:
-        raise NotImplementedError
+        return self.operators == other.operators
+
+    def __ne__(self, other: "SuperOperator") -> bool:
+        return not self.__eq__(other)
 
     # ----------------------------------------------------------------------
     # Basic Operations In Linear Space
 
-    def __add__(self, other: "SuperOperator") -> "SuperOperator":
-        raise NotImplementedError
+    def __add__(self, other: Qobj) -> Qobj:
+        return NotImplemented
 
-    def __sub__(self, other: "SuperOperator") -> "SuperOperator":
-        raise NotImplementedError
+    def __sub__(self, other: Qobj) -> Qobj:
+        return NotImplemented
 
-    def __mul__(self, other: float) -> "SuperOperator":
-        raise NotImplementedError
+    def __mul__(self, other: complex) -> Qobj:
+        return NotImplemented
+
+    def __rmul__(self, other: complex) -> Qobj:
+        return NotImplemented
 
     # ----------------------------------------------------------------------
-    # Multiplication Operations
+    # Basic Properties
 
-    def evolve(self,
-               density_matrix: DensityMatrix,
-               time: Optional[float] = None) -> DensityMatrix:
-        """
-        The density matrix of the system 
-        follows the master equation and evolves with time.
-
-        Parameters
-        ----------
-        density_matrix : DensityMatrix
-            Density matrix of the system.
-        time : float, optional
-            Evolution time. If time is not `None`, 
-            a time evolution operator will be generated 
-            according to the Hamiltonian and evolution time, 
-            otherwise it means that it itself is a time evolution operator.
-
-        Returns
-        -------
-        result : DensityMatrix
-            New density matrix.
-
-        """
-        raise NotImplementedError
+    @property
+    def operators(self) -> List[Operator]:
+        return self.__operators

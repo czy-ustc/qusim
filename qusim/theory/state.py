@@ -7,7 +7,6 @@
 # Copyright 2022 Zhiyuan Chen <chenzhiyuan@mail.ustc.edu.cn>
 
 from functools import reduce
-import random
 from itertools import zip_longest
 from typing import Any, List, Optional, Union
 
@@ -226,7 +225,7 @@ class State(Qobj):
         else:
             return type(self)(self.unit(False).array.__rmatmul__(other.array))
 
-    def inner(self, other: "State") -> float:
+    def overlap(self, other: "State") -> float:
         """
         Calculate the overlap degree of two state vectors,
         defined by `|<psi|phi>|^2`.
@@ -310,48 +309,6 @@ class State(Qobj):
             return 1 / length * self
 
     # ----------------------------------------------------------------------
-    # Measure
-
-    def measure(self, basis: Optional[Hilbert] = None) -> "State":
-        """
-        The state vector is measured 
-        and randomly collapses to an eigenstate 
-        according to a certain probability.
-
-        Parameters
-        ----------
-        basis : Hilbert, optional
-            Hilbert space, default by `self.space`.
-
-        Returns
-        -------
-        result : State
-            The state vector obtained from collapse.
-
-        """
-        space = basis or self.space
-        basis = space.directions
-        # bra
-        if (self.shape[0] == 1):
-            amplitudes = (self.array @ basis.array).flatten()
-        # ket
-        else:
-            amplitudes = (basis.array @ self.array).flatten()
-
-        index = 0
-        rand = random.uniform(0, 1)
-        for p in map(lambda x: pow(abs(x), 2), amplitudes):
-            if rand < p:
-                break
-            rand -= p
-            index += 1
-
-        if (self.shape[0] == 1):
-            return self.__class__(basis[index], (1, self.dim), H=space)
-        else:
-            return self.__class__(basis[index], (self.dim, 1), H=space)
-
-    # ----------------------------------------------------------------------
     # Metric
 
     def norm(self, ord: Union[int, str] = 2) -> float:
@@ -419,7 +376,7 @@ class Ket(State):
 
     @property
     def H(self) -> "Bra":
-        return Bra(self.array.T.conj(), H=self.space)
+        return self.bra
 
     @property
     def ket(self) -> "Ket":
@@ -430,7 +387,8 @@ class Ket(State):
     @property
     def bra(self) -> "Bra":
         """Get the state vector as a bra."""
-        return Bra(self.array.T.conj(), H=self.space)
+        return Bra((self.space.directions.array.conj() @ self.array).conj(),
+                   H=self.space)
 
     def __matmul__(self, other: Qobj) -> Union[Qobj, State, complex]:
         res = super().__matmul__(other)
@@ -499,12 +457,13 @@ class Bra(State):
 
     @property
     def H(self) -> "Ket":
-        return Ket(self.array.T.conj(), H=self.space)
+        return self.ket
 
     @property
     def ket(self) -> "Ket":
         """Get the state vector as a ket."""
-        return Ket(self.array.T.conj(), H=self.space)
+        return Ket((self.array @ self.space.directions.array.T).conj(),
+                   H=self.space)
 
     @property
     def bra(self) -> "Bra":

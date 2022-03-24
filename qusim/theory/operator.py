@@ -6,7 +6,6 @@
 #
 # Copyright 2022 Zhiyuan Chen <chenzhiyuan@mail.ustc.edu.cn>
 
-import math
 from functools import cached_property, reduce
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -353,58 +352,11 @@ class MechanicalOperator(HermiteOperator):
         else:
             return super().__matmul__(other)
 
-    def expect(self, state: "State") -> float:
-        """
-        Average value of mechanical quantity ensemble, 
-        that is `<psi|A|psi>`.
-
-        Parameters
-        ----------
-        state : State
-            Quantum state of the system.
-
-        Returns
-        -------
-        result : float
-            Expected value of mechanical quantity.
-
-        """
-        return state.bra.array @ self.array @ state.ket.array
-
 
 class HamiltonOperator(MechanicalOperator):
     """Hamilton Operator."""
 
     __type__ = "Hamilton Operator"
-
-    def evolve(self, state: State, time: Optional[float] = None) -> State:
-        """
-        The state vector of the system 
-        follows the Schrodinger equation and evolves with time.
-
-        Parameters
-        ----------
-        state : State
-            Quantum state of the system.
-        time : float, optional
-            Evolution time. If time is not `None`, 
-            a time evolution operator will be generated 
-            according to the Hamiltonian and evolution time, 
-            otherwise it means that it itself is a time evolution operator.
-
-        Returns
-        -------
-        result : State
-            New state vector.
-
-        """
-        if time is not None:
-            U = HamiltonOperator(self.array * (1j * time),
-                                 H=self.space,
-                                 check=False).expm()
-        else:
-            U = self
-        return U @ state
 
 
 class Sigma(UnitaryOperator, MechanicalOperator):
