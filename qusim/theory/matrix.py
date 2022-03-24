@@ -8,8 +8,9 @@
 # Copyright 2022 Zhiyuan Chen <chenzhiyuan@mail.ustc.edu.cn>
 # from typing import Dict, Iterator, List, Optional, Sequence, Tuple, Union
 from collections.abc import Iterable
+from functools import cached_property
 from itertools import product
-from typing import Iterator, Optional, Tuple, Union
+from typing import Any, Iterator, Optional, Tuple, Union
 
 import numpy as np
 from qusim.theory.type import Element, MatData, Shape, __eps__
@@ -71,7 +72,7 @@ class Matrix(object):
                 data: MatData,
                 shape: Optional[Shape] = None,
                 *args,
-                **kwargs):
+                **kwargs) -> Any:
         """
         Notes
         -----
@@ -257,7 +258,6 @@ class Matrix(object):
         """Transpose matrix."""
         return self.__class__(self.__array.T)
 
-    @property
     def conj(self) -> "Matrix":
         """Conjugate matrix."""
         return self.__class__(self.__array.conj())
@@ -276,6 +276,7 @@ class Matrix(object):
     # ----------------------------------------------------------------------
     # Other Methods
 
+    @cached_property
     def nonzero(self) -> Iterator[Element]:
         """
         Returns the nonzero element of the matrix (as iterator).
@@ -289,12 +290,13 @@ class Matrix(object):
         ----------
         element : Element
             The position and value of nonzero elements of the matrix.
+
         """
 
-        return filter(
-            lambda x: abs(x[1]) > __eps__,
-            ((p, self[p])
-             for p in product(range(self.shape[0]), range(self.shape[1]))))
+        return list(
+            filter(lambda x: abs(x[1]) > __eps__, (
+                (p, self[p])
+                for p in product(range(self.shape[0]), range(self.shape[1])))))
 
     # ----------------------------------------------------------------------
     # Basic Properties

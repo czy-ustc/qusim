@@ -9,7 +9,7 @@
 from functools import reduce
 import random
 from itertools import zip_longest
-from typing import List, Optional, Union
+from typing import Any, List, Optional, Union
 
 import numpy as np
 from qusim.theory.hilbert import Hilbert
@@ -84,15 +84,15 @@ class State(Qobj):
         states = self.space.names
         # bra
         if (self.shape[0] == 1):
-            amplitudes = (
-                self.array @ self.space.directions.array.conj()).flatten()
+            amplitudes = (self.array @ self.space.directions.array.T).flatten()
             string = "".join([
                 f"{format_complex(amplitudes[i])}<{states[i]}|"
                 for i in range(self.dim) if abs(amplitudes[i]) > __eps__
             ])
         # ket
         else:
-            amplitudes = (self.space.directions.array.T @ self.array).flatten()
+            amplitudes = (
+                self.space.directions.array.conj() @ self.array).flatten()
             string = "".join([
                 f"{format_complex(amplitudes[i])}|{states[i]}>"
                 for i in range(self.dim) if abs(amplitudes[i]) > __eps__
@@ -128,8 +128,8 @@ class State(Qobj):
             return False
 
         res = []
-        for src1, src2 in zip_longest(self.nonzero(),
-                                      other.nonzero(),
+        for src1, src2 in zip_longest(self.nonzero,
+                                      other.nonzero,
                                       fillvalue=((-1, -1), 0)):
             if (src1[0] != src2[0]):
                 return False
@@ -392,6 +392,17 @@ class Ket(State):
 
     __type__ = "Ket"
 
+    def __new__(cls,
+                data: MatData,
+                shape: Optional[Shape] = None,
+                *args,
+                **kwargs) -> Any:
+        if isinstance(shape, int):
+            shape = (shape, 1)
+        elif "dim" in kwargs:
+            shape = (kwargs["dim"], 1)
+        return super().__new__(cls, data, shape=shape, *args, **kwargs)
+
     def __init__(self,
                  data: MatData,
                  dim: Optional[int] = None,
@@ -400,8 +411,11 @@ class Ket(State):
         if dim is not None:
             super().__init__(data, shape=(dim, 1), H=H, unit=unit)
         else:
-            super().__init__(data, H=H, unit=unit)
-            self.resize((self.dim, 1))
+            super().__init__(data, unit=unit)
+            if self.shape[0] != self.dim:
+                self.resize((self.dim, 1))
+            if H is not None:
+                self.space = H
 
     @property
     def H(self) -> "Bra":
@@ -458,6 +472,17 @@ class Bra(State):
 
     __type__ = "Bra"
 
+    def __new__(cls,
+                data: MatData,
+                shape: Optional[Shape] = None,
+                *args,
+                **kwargs) -> Any:
+        if isinstance(shape, int):
+            shape = (1, shape)
+        elif "dim" in kwargs:
+            shape = (1, kwargs["dim"])
+        return super().__new__(cls, data, shape=shape, *args, **kwargs)
+
     def __init__(self,
                  data: MatData,
                  dim: Optional[int] = None,
@@ -466,8 +491,11 @@ class Bra(State):
         if dim is not None:
             super().__init__(data, shape=(1, dim), H=H, unit=unit)
         else:
-            super().__init__(data, H=H, unit=unit)
-            self.resize((1, self.dim))
+            super().__init__(data, unit=unit)
+            if self.shape[1] != self.dim:
+                self.resize((1, self.dim))
+            if H is not None:
+                self.space = H
 
     @property
     def H(self) -> "Ket":

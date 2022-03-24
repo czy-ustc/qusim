@@ -69,7 +69,7 @@ class Qobj(Matrix):
 
         if self.shape[0] == self.dim:
             self.array = H.directions.array.T @ self.array
-        else:
+        if self.shape[1] == self.dim:
             self.array = self.array @ H.directions.array.conj()
 
     @cached_property
