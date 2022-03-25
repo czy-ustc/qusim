@@ -332,6 +332,10 @@ class SuperOperator(Qobj):
                 Operator(Matrix(k), dim=dim, H=H) for k in Kraus
             ]
 
+        if np.sum([op.H @ op for op in self.operators], axis=0) != Matrix.eye(
+                self.operators[0].dim):
+            raise ValueError("super operator must be trace preserving")
+
     # ----------------------------------------------------------------------
     # Formatting
 
