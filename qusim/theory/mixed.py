@@ -18,8 +18,7 @@ from qusim.theory.matrix import Matrix
 from qusim.theory.operator import Operator
 from qusim.theory.qobj import Qobj
 from qusim.theory.state import Bra, Ket, State
-from qusim.theory.type import MatData
-from scipy.linalg import logm
+from qusim.theory.type import MatData, __eps__
 
 
 class DensityMatrix(Qobj):
@@ -147,9 +146,18 @@ class DensityMatrix(Qobj):
         and cannot be normalized.
 
         """
-        a0 = math.sqrt(self[(0, 0)].real)
-        data = [complex(i / a0).conjugate() for i in self[0]]
-        return Ket(data, H=self.space, unit=False)
+        res = np.zeros((1, self.dim), dtype=complex)
+        w, v = np.linalg.eig(self.array)
+        for value, state in zip(w, v.T):
+            if abs(value) < __eps__:
+                continue
+            state = state.reshape((1, self.dim))
+            density = state.T.conj() * state
+            index = next(
+                filter(lambda i: density[(i, i)].real != 0, range(self.dim)))
+            element = math.sqrt(density[(index, index)].real)
+            res += np.array([j / element for j in density[index]]) * value
+        return Ket(res, H=self.space, unit=False)
 
     @cached_property
     def bra(self) -> Bra:
@@ -162,9 +170,7 @@ class DensityMatrix(Qobj):
         and cannot be normalized.
 
         """
-        a0 = math.sqrt(self[(0, 0)].real)
-        data = [i / a0 for i in self[0]]
-        return Bra(data, H=self.space, unit=False)
+        return Bra(self.ket.array.T.conj(), H=self.space, unit=False)
 
     # ----------------------------------------------------------------------
     # Metric
